@@ -28,9 +28,10 @@ class NCF(L.LightningModule):
         # self.fc3 = nn.Linear(in_features=16, out_features=1)
         
     def forward(self, user_id, item_input):
+        # user_id = user_id.squeeze()
         user_vector = nn.ReLU()(self.user_emb(user_id.squeeze()))
         item_vector = nn.ReLU()(self.item_fc_1(item_input))
-        fusion_output = self.bilinear(user_vector, item_vector)
+        fusion_output = self.bilinear(user_vector.reshape(-1, 32), item_vector)
         pred = nn.Sigmoid()(fusion_output)
         # user_output = nn.ReLU()(self.user_fc_2(user_vector))
         # item_output = nn.ReLU()(self.item_fc_2(item_vector))
@@ -73,9 +74,9 @@ class NCF(L.LightningModule):
         return torch.optim.Adam(self.parameters(), lr=1e-3)
     
     def train_dataloader(self) -> DataLoader:
-        return DataLoader(MovieLensDataset('train'), num_workers=4, batch_size=1024)
+        return DataLoader(MovieLensDataset('train'), num_workers=4, batch_size=1024, persistent_workers=True)
 
     def val_dataloader(self) -> DataLoader:
-        return DataLoader(MovieLensDataset('val'), num_workers=4, batch_size=1024)
+        return DataLoader(MovieLensDataset('val'), num_workers=4, batch_size=1024, persistent_workers=True)
 
 

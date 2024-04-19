@@ -37,7 +37,7 @@ class ProcessRatings:
         return train_ratings, test_ratings
 
     def __remove_ratings_not_in_movie_list(self, ratings):
-        movie_list = pd.read_parquet(r'C:\Users\uyen\OneDrive\NeuralCF\data\dataset\movies.pqt', columns=['movie_id']).values.squeeze()
+        movie_list = pd.read_parquet(r'data\dataset\movies.pqt', columns=['movie_id']).values.squeeze()
         ratings = ratings[ratings.movie_id.isin(movie_list)].reset_index(drop=True)
         return ratings
 
