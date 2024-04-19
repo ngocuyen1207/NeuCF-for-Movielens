@@ -57,3 +57,8 @@ class ProcessRatings:
         ratings['label'] = [1 if i >= 4 else 0 for i in ratings.rating]
         ratings = ratings[['user_id','movie_id','label']]
         return ratings, ratings_ft
+    
+    def get_ratings_ft(self):
+        ratings = read_data('ratings', ['user_id', 'movie_id', 'rating', 'timestamp'])
+        ratings_ft = self.__fe_rating_features(ratings)
+        return ratings_ft

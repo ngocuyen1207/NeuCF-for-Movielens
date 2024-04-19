@@ -10,8 +10,8 @@ np.random.seed(123)
 from torch import Tensor
 from typing import Any, Optional
 from lightning.pytorch.utilities.types import STEP_OUTPUT
-from data import MovieLensDataset
-
+from data import *
+from utils import *
 class NCF(L.LightningModule):
     """ Neural Collaborative Filtering (NCF)    
     """
@@ -43,7 +43,7 @@ class NCF(L.LightningModule):
         return pred
     
     def loss(self, preds: Tensor, labels: Optional[Tensor] = None) -> Tensor:
-        return nn.MSELoss()(preds, labels)
+        return nn.BCELoss()(preds, labels)
     
     def ndcg(self, predicted_labels, labels, user_ids):
         return RetrievalNormalizedDCG()(predicted_labels, labels, indexes=user_ids)
@@ -66,9 +66,11 @@ class NCF(L.LightningModule):
         return {"x": loss}
 
     def predict_step(self, batch: Any, batch_idx: int) -> STEP_OUTPUT:
-        user_input, item_input, user_ids = batch
+        user_input, item_input, user_ids, movie_ids = batch
         predicted_labels = self(user_ids, item_input)
-        return predicted_labels
+        result = {'user_id': user_ids.squeeze().cpu().tolist(), 'movie_id': movie_ids.squeeze().cpu().tolist(), 'predictions': predicted_labels.squeeze().cpu().tolist()}
+        upload_to_mongo(result)
+        return result
 
     def configure_optimizers(self):
         return torch.optim.Adam(self.parameters(), lr=1e-3)
@@ -79,4 +81,5 @@ class NCF(L.LightningModule):
     def val_dataloader(self) -> DataLoader:
         return DataLoader(MovieLensDataset('val'), num_workers=4, batch_size=1024, persistent_workers=True)
 
-
+    def predict_dataloader(self) -> DataLoader:
+        return DataLoader(MovieLensInferAllDataset(), num_workers=4, batch_size=1024, persistent_workers=True)

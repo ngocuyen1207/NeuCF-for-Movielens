@@ -28,7 +28,7 @@ class MovieLensDataset(Dataset):
     def __len__(self):
         if self.train_val == 'train':
             return len(self.train_ratings)
-        else:
+        if self.train_val == 'val':
             return len(self.val_ratings)
   
     def __getitem__(self, idx):
@@ -90,3 +90,33 @@ class MovieLensSingleUserDataset(Dataset):
         users = users.drop('zipcode',axis=1)
         users['gender'] = [1.0 if i=='M' else 0.0 for i in users['gender']]
         return movies, users, ratings
+
+class MovieLensInferAllDataset(Dataset):
+    def __init__(self):
+        '''
+        part: train/infer
+        '''
+        self.movies, self.users = self.__feature_engineering()
+        
+    def __len__(self):
+        return len(self.movies) * len(self.users)
+  
+    def __getitem__(self, idx):
+        movie_idx = idx % len(self.movies)
+        user_idx = idx // len(self.users)
+        movie_id = self.movies.iloc[movie_idx]['movie_id']
+        user_id = self.users.iloc[user_idx]['user_id']
+        movie_data = self.movies.iloc[movie_idx].values.squeeze()
+        user_data = self.users.iloc[user_idx].values.squeeze()
+        return torch.LongTensor(user_data), torch.FloatTensor(movie_data), torch.LongTensor([user_id]), torch.LongTensor([movie_id])
+
+    def __feature_engineering(self):
+        if not os.path.exists(r'data\dataset\movies.pqt'):
+            ProcessMovies(r'data\dataset').main()
+        movies = pd.read_parquet(r'data\dataset\movies.pqt')
+        ratings_ft = ProcessRatings(r'data\dataset').get_ratings_ft()
+        movies = movies.merge(ratings_ft)
+        users = read_data('users',table_columns=['user_id','gender','age', 'occupation', 'zipcode'])
+        users = users.drop('zipcode',axis=1)
+        users['gender'] = [1.0 if i=='M' else 0.0 for i in users['gender']]
+        return movies, users
