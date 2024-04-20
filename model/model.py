@@ -10,8 +10,9 @@ np.random.seed(123)
 from torch import Tensor
 from typing import Any, Optional
 from lightning.pytorch.utilities.types import STEP_OUTPUT
-from data import *
-from utils import *
+from data import MovieLensDataset, MovieLensInferAllDataset
+from utils import read_data, upload_to_mongo
+
 class NCF(L.LightningModule):
     """ Neural Collaborative Filtering (NCF)    
     """
@@ -82,4 +83,4 @@ class NCF(L.LightningModule):
         return DataLoader(MovieLensDataset('val'), num_workers=4, batch_size=1024, persistent_workers=True)
 
     def predict_dataloader(self) -> DataLoader:
-        return DataLoader(MovieLensInferAllDataset(), num_workers=4, batch_size=1024, persistent_workers=True)
+        return DataLoader(MovieLensInferAllDataset(), num_workers=4, batch_size=8192, persistent_workers=True)

@@ -4,11 +4,6 @@ import sys
 
 import numpy as np
 import pandas as pd
-import torch
-import umap
-import wikipedia
-from tqdm import tqdm
-from transformers import BertModel, BertTokenizer
 
 sys.path.append(os.getcwd())
 from utils import read_data

@@ -1,54 +1,31 @@
-import logging
-log = logging.getLogger("pytorch_lightning")
-log.propagate = False
-log.setLevel(logging.ERROR)
 import lightning as L
-from lightning.pytorch import loggers as pl_loggers
+L.seed_everything(69)
 from lightning.pytorch.callbacks import ModelCheckpoint
 from lightning.pytorch.callbacks.early_stopping import EarlyStopping
-from data import MovieLensSingleUserDataset
-from torch.utils.data import DataLoader
-L.seed_everything(69)
-import torch
+from lightning.pytorch import loggers as pl_loggers
 from model import NCF
+from data import MovieLensSingleUserDataset
+import asyncio
+from torch.utils.data import DataLoader
+
 from fastapi import FastAPI, Depends
-import os
-import json
-from utils import *
+from utils import check_user_id_availability,  delete_all_predictions, get_predictions_from_mongo
+PRETRAIN = r"model\checkpoint\neucfemb-epoch=13-val_loss=0.62-val_ndcg=0.79.ckpt"
+
 app = FastAPI()
 
-PRETRAIN = r"model\checkpoint\neucfemb-epoch=16-val_loss=1.14-val_ndcg=0.78.ckpt"
-PREDICTIONS = 'model/prediction.json'
-
-import torch
-from lightning.pytorch.callbacks import BasePredictionWriter
-
-class CustomWriter(BasePredictionWriter):
-    def __init__(self, output_dir, write_interval):
-        super().__init__(write_interval)
-        self.output_dir = output_dir
-
-    def write_on_epoch_end(self, trainer, pl_module, predictions, batch_indices):
-        # this will create N (num processes) files in `output_dir` each containing
-        # the predictions of it's respective rank
-        torch.save(predictions, os.path.join(self.output_dir, f"predictions_{trainer.global_rank}.pt"))
-
-        # optionally, you can also save `batch_indices` to get the information about the data index
-        # from your prediction data
-        torch.save(batch_indices, os.path.join(self.output_dir, f"batch_indices_{trainer.global_rank}.pt"))
-
-
-def train():
+@app.post("/train")
+async def train_all_users():
     delete_all_predictions()
     model = NCF()
     checkpoint_callback = [
         ModelCheckpoint(
+            save_top_k=-1,
+            monitor='val_loss',
             dirpath="model//checkpoint",
             filename="neucfemb-{epoch:02d}-{val_loss:.2f}-{val_ndcg:.2f}",
         ),
         EarlyStopping(monitor="val_loss", mode="min"),
-        # CustomWriter(output_dir="model/predictions/", write_interval="epoch")
-
     ]
     trainer = L.Trainer(
         max_epochs=50,
@@ -58,17 +35,15 @@ def train():
         deterministic=True,
         logger=pl_loggers.TensorBoardLogger(save_dir="model/"),
     )
-    trainer.fit(model, ckpt_path=PRETRAIN)
-    trainer.predict(model, return_predictions=False)
+    trainer.fit(model, 
+                ckpt_path=PRETRAIN
+                )
+    trainer.predict(model, return_predictions=False, ckpt_path=PRETRAIN)
 
 def train_one_user(user_id):
     model = NCF()
-    dataloader = DataLoader(MovieLensSingleUserDataset(user_id, 'train'), num_workers=8)
+    train_dataloader = DataLoader(MovieLensSingleUserDataset(user_id, 'train'), num_workers=8)
     checkpoint_callback = [
-        ModelCheckpoint(
-            dirpath="model//checkpoint",
-            filename="neucfemb-latest",
-        ),
         EarlyStopping(monitor="val_loss", mode="min"),
     ]
 
@@ -80,39 +55,22 @@ def train_one_user(user_id):
         num_sanity_val_steps=0,
         callbacks=checkpoint_callback,
     )
-    trainer.fit(model, train_dataloaders=dataloader, ckpt_path=PRETRAIN) 
+    trainer.fit(model, train_dataloaders=train_dataloader, ckpt_path=PRETRAIN) 
+    infer_dataloader = DataLoader(MovieLensSingleUserDataset(user_id, 'infer'), num_workers=8, batch_size=2048)
+    trainer.predict(model, dataloaders=infer_dataloader, return_predictions=False)
 
 @app.get("/{user_id}/{retrain}")
-def infer_one_user(user_id: int = Depends(check_user_id_availability), retrain: bool=False):
+async def infer_one_user(user_id: int, retrain: bool):
     '''
     ## Infer cho một user \n
     **user_id**: User id \n
     **retrain**: Nếu user mới hay là cần train lại với rating mới thì đặt là True, sẽ mất khoảng 5 phút. Còn nếu không thì để False cho nhanh
     '''
-    return {'user_id': [user_id,user_id, user_id],'movie_id': [1,2,3], 'predictions': [0.99, 0.97, 0.96]}
-    model = NCF()
-    dataloader = DataLoader(MovieLensSingleUserDataset(user_id, 'infer'), num_workers=8, persistent_workers=True)
 
     if retrain:
         train_one_user(user_id)
-        trainer = L.Trainer(
-            accelerator="auto",
-            enable_progress_bar=True,
-            deterministic=True,
-            enable_checkpointing=False,
-            num_sanity_val_steps=0,
-            inference_mode=True,
-        )
-        predictions = trainer.predict(model=model, dataloaders=dataloader, return_predictions=True,ckpt_path=PRETRAIN)
-        return predictions
-    else:
-        with open(PREDICTIONS, 'r') as json_file:
-            predictions = pd.DataFrame(json.load(json_file))
-        predictions = predictions[predictions.user_id == user_id]
-        predictions = {'user_id': predictions.user_id.tolist(), 'movie_id': predictions.movie_id.tolist(), 'predictions': predictions.predictions.tolist()}   
-        return predictions
+    check_user_id_availability(user_id)
+    return get_predictions_from_mongo(user_id)
             
-
-if __name__ == "__main__":
-    train()
-    # infer_one_user(2, False)
+if __name__=='__main__':
+    train_one_user(100)

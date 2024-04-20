@@ -76,8 +76,9 @@ class MovieLensSingleUserDataset(Dataset):
             return torch.LongTensor(user_data), torch.FloatTensor(movie_data), torch.LongTensor([user_id]), torch.FloatTensor([label])
         if self.train_infer == 'infer':
             movie_data = self.movies.iloc[idx].values.squeeze()
+            movie_id = self.movies.iloc[idx]['movie_id']
             user_data = self.users[self.users.user_id==self.user_id].values.squeeze()
-            return torch.LongTensor(user_data), torch.FloatTensor(movie_data), torch.LongTensor([self.user_id])
+            return torch.LongTensor(user_data), torch.FloatTensor(movie_data), torch.LongTensor([self.user_id]), torch.LongTensor([movie_id])
 
     def __feature_engineering(self):
         if not os.path.exists(r'data\dataset\movies.pqt'):
@@ -103,7 +104,7 @@ class MovieLensInferAllDataset(Dataset):
   
     def __getitem__(self, idx):
         movie_idx = idx % len(self.movies)
-        user_idx = idx // len(self.users)
+        user_idx = idx // len(self.movies)
         movie_id = self.movies.iloc[movie_idx]['movie_id']
         user_id = self.users.iloc[user_idx]['user_id']
         movie_data = self.movies.iloc[movie_idx].values.squeeze()
